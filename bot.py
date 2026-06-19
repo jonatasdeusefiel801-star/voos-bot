@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import requests
 from flask import Flask, jsonify, request
 
-from search import RJ, SP, buscar_paralelo, buscar_debug
+from search import RJ, SP, buscar_paralelo, buscar_debug, tirar_screenshot
 
 app = Flask(__name__)
 
@@ -24,6 +24,16 @@ def send(chat_id, text):
                       timeout=12)
     except Exception as e:
         print(f'[send] Erro: {e}')
+
+
+def send_photo(chat_id, photo_bytes, caption=''):
+    try:
+        requests.post(f'{TELEGRAM_URL}/sendPhoto',
+                      data={'chat_id': chat_id, 'caption': caption},
+                      files={'photo': ('screenshot.png', photo_bytes, 'image/png')},
+                      timeout=30)
+    except Exception as e:
+        print(f'[send_photo] Erro: {e}')
 
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
@@ -151,18 +161,29 @@ def webhook():
     if tl.startswith('/debug'):
         data_iso = _parse_data(texto[6:].strip()) or datetime.now().strftime('%Y-%m-%d')
         send(chat_id, f'🔧 Debug GIG→CGH para `{data_iso}`...')
-        def _run_debug():
-            info = buscar_debug('GIG', 'CGH', data_iso)
-            msg = (
-                f'🔧 *Debug* `GIG→CGH` `{data_iso}`\n'
-                f'URL: `{info["url"][-60:]}`\n'
+        def _run_debug(cid=chat_id, d=data_iso):
+            info = buscar_debug('GIG', 'CGH', d)
+            txt = (
+                f'🔧 *Debug* `GIG→CGH` `{d}`\n'
                 f'Título: `{info.get("title","?")}`\n'
                 f'Cards `.pIav2d`: `{info.get("cards","?")}`\n'
                 f'Parsed: `{info.get("parsed","?")}`\n'
                 f'Erro: `{info.get("error","nenhum")}`'
             )
-            send(chat_id, msg)
+            send(cid, txt)
         threading.Thread(target=_run_debug, daemon=True).start()
+        return jsonify({'ok': True})
+
+    if tl.startswith('/screenshot'):
+        data_iso = _parse_data(texto[11:].strip()) or datetime.now().strftime('%Y-%m-%d')
+        send(chat_id, f'📷 Tirando screenshot GIG→CGH para `{data_iso}`...')
+        def _run_ss(cid=chat_id, d=data_iso):
+            img = tirar_screenshot('GIG', 'CGH', d)
+            if img:
+                send_photo(cid, img, caption=f'Google Flights GIG→CGH {d}')
+            else:
+                send(cid, '❌ Não foi possível tirar screenshot.')
+        threading.Thread(target=_run_ss, daemon=True).start()
         return jsonify({'ok': True})
 
     data_iso = _parse_data(texto)
