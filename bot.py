@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import requests
 from flask import Flask, jsonify, request
 
-from search import RJ, SP, buscar_paralelo
+from search import RJ, SP, buscar_paralelo, buscar_debug
 
 app = Flask(__name__)
 
@@ -146,6 +146,23 @@ def webhook():
 
     if any(w in tl for w in ['/start', '/help', 'ajuda', 'oi', 'olá', 'ola', 'menu']):
         send(chat_id, HELP_TEXT)
+        return jsonify({'ok': True})
+
+    if tl.startswith('/debug'):
+        data_iso = _parse_data(texto[6:].strip()) or datetime.now().strftime('%Y-%m-%d')
+        send(chat_id, f'🔧 Debug GIG→CGH para `{data_iso}`...')
+        def _run_debug():
+            info = buscar_debug('GIG', 'CGH', data_iso)
+            msg = (
+                f'🔧 *Debug* `GIG→CGH` `{data_iso}`\n'
+                f'URL: `{info["url"][-60:]}`\n'
+                f'Título: `{info.get("title","?")}`\n'
+                f'Cards `.pIav2d`: `{info.get("cards","?")}`\n'
+                f'Parsed: `{info.get("parsed","?")}`\n'
+                f'Erro: `{info.get("error","nenhum")}`'
+            )
+            send(chat_id, msg)
+        threading.Thread(target=_run_debug, daemon=True).start()
         return jsonify({'ok': True})
 
     data_iso = _parse_data(texto)
