@@ -201,6 +201,35 @@ def buscar_debug(ori: str, dst: str, data: str) -> dict:
                 pass
 
 
+def tirar_screenshot(ori: str, dst: str, data: str) -> bytes | None:
+    """Abre Google Flights e retorna screenshot PNG como bytes."""
+    tfs = _tfs(ori, dst, data)
+    link = f'https://www.google.com/travel/flights/search?tfs={tfs}&hl=pt-BR&curr=BRL'
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
+        try:
+            ctx = browser.new_context(
+                locale='pt-BR',
+                timezone_id='America/Sao_Paulo',
+                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 800},
+            )
+            ctx.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined});")
+            page = ctx.new_page()
+            try:
+                page.goto(link, wait_until='domcontentloaded', timeout=35_000)
+                page.wait_for_timeout(5000)
+            except Exception:
+                pass
+            print(f'[screenshot] title={page.title()} url={page.url[:80]}', flush=True)
+            return page.screenshot(full_page=False)
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+
 def buscar_paralelo(rotas: list, data: str, on_log=None, workers: int = 3) -> list:
     """Busca múltiplas rotas para uma data, um browser por worker."""
     fila = Queue()
