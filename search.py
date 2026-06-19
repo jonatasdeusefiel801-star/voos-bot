@@ -110,7 +110,7 @@ def _parse_card(card) -> dict | None:
 
 
 def _buscar_no_browser(browser, ori, dst, data, on_log=None,
-                       sel_timeout=18_000, extra_espera=0):
+                       sel_timeout=25_000, extra_espera=0, debug=False):
     tfs = _tfs(ori, dst, data)
     link = f'https://www.google.com/travel/flights/search?tfs={tfs}&hl=pt-BR&curr=BRL'
 
@@ -118,15 +118,16 @@ def _buscar_no_browser(browser, ori, dst, data, on_log=None,
         locale='pt-BR',
         timezone_id='America/Sao_Paulo',
         user_agent=(
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'Mozilla/5.0 (X11; Linux x86_64) '
             'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/124.0.0.0 Safari/537.36'
+            'Chrome/125.0.0.0 Safari/537.36'
         ),
         viewport={'width': 1366, 'height': 768},
         extra_http_headers={'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'},
         java_script_enabled=True,
         bypass_csp=True,
     )
+    debug_info = {'url': link, 'title': '', 'cards': 0, 'error': '', 'parsed': 0}
     try:
         ctx.add_init_script(
             "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
@@ -136,9 +137,15 @@ def _buscar_no_browser(browser, ori, dst, data, on_log=None,
         page = ctx.new_page()
 
         try:
-            page.goto(link, wait_until='domcontentloaded', timeout=30_000)
+            page.goto(link, wait_until='domcontentloaded', timeout=35_000)
+            debug_info['title'] = page.title()
+            print(f'[search] {ori}→{dst} | title={debug_info["title"]} | url={page.url[:80]}', flush=True)
             page.wait_for_selector('.pIav2d', timeout=sel_timeout)
-        except Exception:
+        except Exception as e:
+            debug_info['error'] = str(e)[:120]
+            print(f'[search] {ori}→{dst} | FALHOU: {debug_info["error"]}', flush=True)
+            if debug:
+                return [], debug_info
             return []
 
         if extra_espera:
@@ -152,6 +159,8 @@ def _buscar_no_browser(browser, ori, dst, data, on_log=None,
             prev = n
             page.wait_for_timeout(300)
 
+        debug_info['cards'] = len(page.query_selector_all('.pIav2d'))
+
         voos = []
         for card in page.query_selector_all('.pIav2d'):
             v = _parse_card(card)
@@ -161,15 +170,35 @@ def _buscar_no_browser(browser, ori, dst, data, on_log=None,
                 v['data']    = data
                 voos.append(v)
 
+        debug_info['parsed'] = len(voos)
+        print(f'[search] {ori}→{dst} | cards={debug_info["cards"]} parsed={len(voos)}', flush=True)
+
         if on_log:
             on_log(f'{ori}→{dst} {data}: {len(voos)} voos')
 
+        if debug:
+            return voos, debug_info
         return voos
     finally:
         try:
             ctx.close()
         except Exception:
             pass
+
+
+def buscar_debug(ori: str, dst: str, data: str) -> dict:
+    """Busca uma rota retornando info de diagnóstico."""
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
+        try:
+            voos, info = _buscar_no_browser(browser, ori, dst, data, debug=True)
+            info['voos'] = len(voos)
+            return info
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass
 
 
 def buscar_paralelo(rotas: list, data: str, on_log=None, workers: int = 3) -> list:
