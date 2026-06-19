@@ -140,6 +140,15 @@ def health():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/test-search', methods=['GET'])
+def test_search():
+    """Rota de diagnóstico: roda uma busca síncrona GIG→CGH e retorna JSON."""
+    from datetime import date
+    data_iso = request.args.get('data', (date.today()).strftime('%Y-%m-%d'))
+    info = buscar_debug('GIG', 'CGH', data_iso)
+    return jsonify(info)
+
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json(silent=True) or {}
